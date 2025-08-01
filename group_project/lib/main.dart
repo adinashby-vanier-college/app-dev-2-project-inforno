@@ -1,122 +1,168 @@
 import 'package:flutter/material.dart';
+import 'package:ollama_dart/ollama_dart.dart';
+import 'dart:io' show Platform;
 
 void main() {
-  runApp(const MyApp());
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
+    // Remove the debug banner
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      debugShowCheckedModeBanner: false,
+      title: 'Inforno',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: OllamaChatPage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
+class OllamaChatPage extends StatefulWidget {
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  _OllamaChatPageState createState() => _OllamaChatPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _OllamaChatPageState extends State<OllamaChatPage> {
+  final _controller = TextEditingController();
+  final List<Message> _messages = [];
+  final List<Message> _messages1 = [];
+  final List<Message> _messages2 = [];
+  bool _isLoading = false;
 
-  void _incrementCounter() {
+  late final OllamaClient client;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Platform.isIOS) {
+      client = OllamaClient(baseUrl: "http://localhost:11434/api");
+    } else {
+      client = OllamaClient(baseUrl: 'http://10.0.2.2:11434/api');
+    }
+  }
+
+  Future<void> _sendMessage(
+    String text,
+    String model,
+    List<Message> messages,
+  ) async {
+    final request = GenerateChatCompletionRequest(
+      model: model, // Specify the model you want to use
+      messages: messages,
+      stream: false,
+    );
+
+    try {
+      final generated = await client.generateChatCompletion(request: request);
+
+      setState(() {
+        Message m = Message(
+          content: model + "\t" + generated.message.content,
+          role: MessageRole.system,
+        );
+        _messages.add(m);
+        messages.add(generated.message);
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _messages.add(Message(content: 'Error: $e', role: MessageRole.system));
+        messages.add(Message(content: 'Error: $e', role: MessageRole.system));
+        _isLoading = false;
+      });
+    }
+
+    _controller.clear();
+  }
+
+  Future<void> _sendMessages(String text) async {
+    if (text.trim().isEmpty) return;
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _messages.add(Message(content: text, role: MessageRole.user));
+      _messages1.add(Message(content: text, role: MessageRole.user));
+      _messages2.add(Message(content: text, role: MessageRole.user));
+      _isLoading = true;
     });
+    _sendMessage(text, 'llama3.2:1b', _messages1);
+    _sendMessage(text, 'deepseek-r1:1.5b', _messages2);
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+      appBar: AppBar(title: Text('Inforno')),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              padding: EdgeInsets.all(8.0),
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                final message = _messages[index];
+                return ChatBubble(message: message);
+              },
             ),
-          ],
-        ),
+          ),
+          if (_isLoading) LinearProgressIndicator(),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    onSubmitted: _sendMessages,
+                    decoration: InputDecoration(hintText: 'Enter your message'),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.send),
+                  onPressed: () => _sendMessages(_controller.text),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 10),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+}
+
+class ChatBubble extends StatelessWidget {
+  final Message message;
+
+  const ChatBubble({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final alignment =
+        message.role == MessageRole.user
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start;
+    final bgColor =
+        message.role == MessageRole.user ? Colors.blue[100] : Colors.grey[200];
+    final textColor = Colors.black;
+
+    return Column(
+      crossAxisAlignment: alignment,
+      children: [
+        Container(
+          margin: EdgeInsets.symmetric(vertical: 4.0),
+          padding: EdgeInsets.all(12.0),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(8.0),
+          ),
+          child: Text(
+            message.content.trim(),
+            style: TextStyle(color: textColor),
+          ),
+        ),
+      ],
     );
   }
 }
