@@ -30,6 +30,7 @@ class _OllamaChatPageState extends State<OllamaChatPage> {
   final List<Message> _messages = [];
   final List<Message> _messages1 = [];
   final List<Message> _messages2 = [];
+  final List<Message> _messages3 = [];
   bool _isLoading = false;
 
   late final OllamaClient client;
@@ -60,7 +61,7 @@ class _OllamaChatPageState extends State<OllamaChatPage> {
 
       setState(() {
         Message m = Message(
-          content: model + "\t" + generated.message.content,
+          content: model + generated.message.content,
           role: MessageRole.system,
         );
         _messages.add(m);
@@ -84,10 +85,12 @@ class _OllamaChatPageState extends State<OllamaChatPage> {
       _messages.add(Message(content: text, role: MessageRole.user));
       _messages1.add(Message(content: text, role: MessageRole.user));
       _messages2.add(Message(content: text, role: MessageRole.user));
+      _messages3.add(Message(content: text, role: MessageRole.user));
       _isLoading = true;
     });
     _sendMessage(text, 'llama3.2:1b', _messages1);
     _sendMessage(text, 'deepseek-r1:1.5b', _messages2);
+    _sendMessage(text, 'gemma3n:e2b', _messages3);
   }
 
   @override
