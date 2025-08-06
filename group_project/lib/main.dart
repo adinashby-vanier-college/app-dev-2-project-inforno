@@ -1,77 +1,97 @@
 import 'package:flutter/material.dart';
-import 'package:ollama_dart/ollama_dart.dart';
-import 'dart:io' show Platform;
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-void main() {
+Future<void> main() async {
+  await dotenv.load(fileName: ".env");
   runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    // Remove the debug banner
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Inforno',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: OllamaChatPage(),
+      home: OpenRouterChatPage(),
     );
   }
 }
 
-class OllamaChatPage extends StatefulWidget {
+class OpenRouterChatPage extends StatefulWidget {
   @override
-  _OllamaChatPageState createState() => _OllamaChatPageState();
+  _OpenRouterChatPageState createState() => _OpenRouterChatPageState();
 }
 
-class _OllamaChatPageState extends State<OllamaChatPage> {
+class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
   final _controller = TextEditingController();
   final List<Message> _messages = [];
   final List<Message> _messages1 = [];
   final List<Message> _messages2 = [];
   final List<Message> _messages3 = [];
   bool _isLoading = false;
-
-  late final OllamaClient client;
+  late final String apiKey;
+  final String endpoint = 'https://openrouter.ai/api/v1/chat/completions';
 
   @override
   void initState() {
     super.initState();
-    if (Platform.isIOS) {
-      client = OllamaClient(baseUrl: "http://localhost:11434/api");
-    } else {
-      client = OllamaClient(baseUrl: 'http://10.0.2.2:11434/api');
+    apiKey = dotenv.env['OPENROUTER_API_KEY'] ?? '';
+    if (apiKey.isEmpty) {
+      _messages.add(
+        Message(
+          content: 'Error: Missing API key. Check your .env file.',
+          role: 'system',
+        ),
+      );
     }
   }
 
   Future<void> _sendMessage(
     String text,
     String model,
-    List<Message> messages,
+    List<Message> messageList,
   ) async {
-    final request = GenerateChatCompletionRequest(
-      model: model, // Specify the model you want to use
-      messages: messages,
-      stream: false,
-    );
+    final headers = {
+      'Authorization': 'Bearer $apiKey',
+      'Content-Type': 'application/json',
+    };
+
+    final body = jsonEncode({
+      'model': model,
+      'messages':
+          messageList
+              .map((msg) => {'role': msg.role, 'content': msg.content})
+              .toList(),
+    });
 
     try {
-      final generated = await client.generateChatCompletion(request: request);
+      final response = await http.post(
+        Uri.parse(endpoint),
+        headers: headers,
+        body: body,
+      );
 
-      setState(() {
-        Message m = Message(
-          content: model + generated.message.content,
-          role: MessageRole.system,
-        );
-        _messages.add(m);
-        messages.add(generated.message);
-        _isLoading = false;
-      });
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final content = data['choices'][0]['message']['content'];
+
+        setState(() {
+          final newMsg = Message(content: '$model: $content', role: 'system');
+          _messages.add(newMsg);
+          messageList.add(Message(content: content, role: 'assistant'));
+          _isLoading = false;
+        });
+      } else {
+        throw Exception('Failed with ${response.statusCode}: ${response.body}');
+      }
     } catch (e) {
       setState(() {
-        _messages.add(Message(content: 'Error: $e', role: MessageRole.system));
-        messages.add(Message(content: 'Error: $e', role: MessageRole.system));
+        final errorMsg = 'Error: $e';
+        _messages.add(Message(content: errorMsg, role: 'system'));
+        messageList.add(Message(content: errorMsg, role: 'system'));
         _isLoading = false;
       });
     }
@@ -81,16 +101,20 @@ class _OllamaChatPageState extends State<OllamaChatPage> {
 
   Future<void> _sendMessages(String text) async {
     if (text.trim().isEmpty) return;
+
+    final userMessage = Message(content: text, role: 'user');
+
     setState(() {
-      _messages.add(Message(content: text, role: MessageRole.user));
-      _messages1.add(Message(content: text, role: MessageRole.user));
-      _messages2.add(Message(content: text, role: MessageRole.user));
-      _messages3.add(Message(content: text, role: MessageRole.user));
+      _messages.add(userMessage);
+      _messages1.add(userMessage);
+      _messages2.add(userMessage);
+      _messages3.add(userMessage);
       _isLoading = true;
     });
-    _sendMessage(text, 'llama3.2:1b', _messages1);
-    _sendMessage(text, 'deepseek-r1:1.5b', _messages2);
-    _sendMessage(text, 'gemma3n:e2b', _messages3);
+
+    _sendMessage(text, 'deepseek/deepseek-r1-0528:free', _messages1);
+    _sendMessage(text, 'google/gemma-3n-e4b-it:free', _messages2);
+    _sendMessage(text, 'tngtech/deepseek-r1t-chimera:free', _messages3);
   }
 
   @override
@@ -104,8 +128,7 @@ class _OllamaChatPageState extends State<OllamaChatPage> {
               padding: EdgeInsets.all(8.0),
               itemCount: _messages.length,
               itemBuilder: (context, index) {
-                final message = _messages[index];
-                return ChatBubble(message: message);
+                return ChatBubble(message: _messages[index]);
               },
             ),
           ),
@@ -135,6 +158,13 @@ class _OllamaChatPageState extends State<OllamaChatPage> {
   }
 }
 
+class Message {
+  final String content;
+  final String role;
+
+  Message({required this.content, required this.role});
+}
+
 class ChatBubble extends StatelessWidget {
   final Message message;
 
@@ -142,13 +172,10 @@ class ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isUser = message.role == 'user';
     final alignment =
-        message.role == MessageRole.user
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start;
-    final bgColor =
-        message.role == MessageRole.user ? Colors.blue[100] : Colors.grey[200];
-    final textColor = Colors.black;
+        isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final bgColor = isUser ? Colors.blue[100] : Colors.grey[200];
 
     return Column(
       crossAxisAlignment: alignment,
@@ -160,10 +187,7 @@ class ChatBubble extends StatelessWidget {
             color: bgColor,
             borderRadius: BorderRadius.circular(8.0),
           ),
-          child: Text(
-            message.content.trim(),
-            style: TextStyle(color: textColor),
-          ),
+          child: Text(message.content.trim()),
         ),
       ],
     );
