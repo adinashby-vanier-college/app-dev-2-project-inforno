@@ -1,195 +1,36 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'firebase_options.dart';
+import 'screens/login_page.dart';
+import 'screens/main_menu_page.dart';
 
 Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
-  runApp(MyApp());
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  runApp(const App());
 }
 
-class MyApp extends StatelessWidget {
+class App extends StatelessWidget {
+  const App({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Inforno',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: OpenRouterChatPage(),
-    );
-  }
-}
-
-class OpenRouterChatPage extends StatefulWidget {
-  @override
-  _OpenRouterChatPageState createState() => _OpenRouterChatPageState();
-}
-
-class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
-  final _controller = TextEditingController();
-  final List<Message> _messages = [];
-  final List<Message> _messages1 = [];
-  final List<Message> _messages2 = [];
-  final List<Message> _messages3 = [];
-  bool _isLoading = false;
-  late final String apiKey;
-  final String endpoint = 'https://openrouter.ai/api/v1/chat/completions';
-
-  @override
-  void initState() {
-    super.initState();
-    apiKey = dotenv.env['OPENROUTER_API_KEY'] ?? '';
-    if (apiKey.isEmpty) {
-      _messages.add(
-        Message(
-          content: 'Error: Missing API key. Check your .env file.',
-          role: 'system',
-        ),
-      );
-    }
-  }
-
-  Future<void> _sendMessage(
-    String text,
-    String model,
-    List<Message> messageList,
-  ) async {
-    final headers = {
-      'Authorization': 'Bearer $apiKey',
-      'Content-Type': 'application/json',
-    };
-
-    final body = jsonEncode({
-      'model': model,
-      'messages':
-          messageList
-              .map((msg) => {'role': msg.role, 'content': msg.content})
-              .toList(),
-    });
-
-    try {
-      final response = await http.post(
-        Uri.parse(endpoint),
-        headers: headers,
-        body: body,
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final content = data['choices'][0]['message']['content'];
-
-        setState(() {
-          final newMsg = Message(content: '$model: $content', role: 'system');
-          _messages.add(newMsg);
-          messageList.add(Message(content: content, role: 'assistant'));
-          _isLoading = false;
-        });
-      } else {
-        throw Exception('Failed with ${response.statusCode}: ${response.body}');
-      }
-    } catch (e) {
-      setState(() {
-        final errorMsg = 'Error: $e';
-        _messages.add(Message(content: errorMsg, role: 'system'));
-        messageList.add(Message(content: errorMsg, role: 'system'));
-        _isLoading = false;
-      });
-    }
-
-    _controller.clear();
-  }
-
-  Future<void> _sendMessages(String text) async {
-    if (text.trim().isEmpty) return;
-
-    final userMessage = Message(content: text, role: 'user');
-
-    setState(() {
-      _messages.add(userMessage);
-      _messages1.add(userMessage);
-      _messages2.add(userMessage);
-      _messages3.add(userMessage);
-      _isLoading = true;
-    });
-
-    _sendMessage(text, 'deepseek/deepseek-r1-0528:free', _messages1);
-    _sendMessage(text, 'google/gemma-3n-e4b-it:free', _messages2);
-    _sendMessage(text, 'tngtech/deepseek-r1t-chimera:free', _messages3);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('Inforno')),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              padding: EdgeInsets.all(8.0),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                return ChatBubble(message: _messages[index]);
-              },
-            ),
-          ),
-          if (_isLoading) LinearProgressIndicator(),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    onSubmitted: _sendMessages,
-                    decoration: InputDecoration(hintText: 'Enter your message'),
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(Icons.send),
-                  onPressed: () => _sendMessages(_controller.text),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: 10),
-        ],
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          return snap.hasData ? const MainMenuPage() : const LoginPage();
+        },
       ),
-    );
-  }
-}
-
-class Message {
-  final String content;
-  final String role;
-
-  Message({required this.content, required this.role});
-}
-
-class ChatBubble extends StatelessWidget {
-  final Message message;
-
-  const ChatBubble({required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    final isUser = message.role == 'user';
-    final alignment =
-        isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-    final bgColor = isUser ? Colors.blue[100] : Colors.grey[200];
-
-    return Column(
-      crossAxisAlignment: alignment,
-      children: [
-        Container(
-          margin: EdgeInsets.symmetric(vertical: 4.0),
-          padding: EdgeInsets.all(12.0),
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(8.0),
-          ),
-          child: Text(message.content.trim()),
-        ),
-      ],
     );
   }
 }
