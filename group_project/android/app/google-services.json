@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "492665667312",
+    "project_id": "inforno-authentication",
+    "storage_bucket": "inforno-authentication.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:492665667312:android:f065d1156849cca0124c35",
+        "android_client_info": {
+          "package_name": "com.example.group_project"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBUhI9JszAMevaQY0wUpbzUJQte_OnHTaU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
