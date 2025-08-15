@@ -2,9 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 Future<void> main() async {
   await dotenv.load(fileName: ".env");
+
+  await Supabase.initialize(
+    url: 'https://soakitbaljxefdzhegso.supabase.co',
+    anonKey: 'sb_publishable_U90sK0zFlOSCRMqAN1yrrQ_EFNlZdSA',
+  );
+
   runApp(MyApp());
 }
 
@@ -34,6 +41,9 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
   bool _isLoading = false;
   late final String apiKey;
   final String endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+  final _future = Supabase.instance.client
+      .from('instruments')
+      .select();
 
   @override
   void initState() {
@@ -123,6 +133,26 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
       appBar: AppBar(title: Text('Inforno')),
       body: Column(
         children: [
+          Expanded(
+            child: FutureBuilder(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  };
+                  final instruments = snapshot.data!;
+                  return ListView.builder(
+                    itemCount: instruments.length,
+                    itemBuilder: ((context, index) {
+                      final instrument = instruments[index];
+                      return ListTile(
+                        title: Text(instrument['name']),
+                      );
+                    }),
+                  );
+                }
+              ),
+          ),
           Expanded(
             child: ListView.builder(
               padding: EdgeInsets.all(8.0),
