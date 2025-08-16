@@ -27,6 +27,46 @@ class MyApp extends StatelessWidget {
   }
 }
 
+class HistoryPage extends StatefulWidget {
+  @override
+  _HistoryPageState createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage> {
+  final _future = Supabase.instance.client
+      .from('instruments')
+      .select();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        appBar: AppBar(
+          title: Text("History - Inforno"),
+        ),
+        body: Expanded(
+          child: FutureBuilder(
+              future: _future,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                };
+                final instruments = snapshot.data!;
+                return ListView.builder(
+                  itemCount: instruments.length,
+                  itemBuilder: ((context, index) {
+                    final instrument = instruments[index];
+                    return ListTile(
+                      title: Text(instrument['name']),
+                    );
+                  }),
+                );
+              }
+          ),
+        ),
+    );
+  }
+}
+
 class OpenRouterChatPage extends StatefulWidget {
   @override
   _OpenRouterChatPageState createState() => _OpenRouterChatPageState();
@@ -41,9 +81,6 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
   bool _isLoading = false;
   late final String apiKey;
   final String endpoint = 'https://openrouter.ai/api/v1/chat/completions';
-  final _future = Supabase.instance.client
-      .from('instruments')
-      .select();
 
   @override
   void initState() {
@@ -130,29 +167,36 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Inforno')),
+      appBar: AppBar(
+        title: Text("Chat - Inforno"),
+        leading: PopupMenuButton(
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              child: Text("New Chat"),
+              onTap: () {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) =>
+                            MyApp()));
+              },
+            ),
+            PopupMenuItem(
+              child: Text("History"),
+              onTap: () {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) =>
+                            HistoryPage()));
+              },
+            ),
+          ]
+        )
+      ),
+      //appBar: AppBar(title: Text('Inforno')),
       body: Column(
         children: [
-          Expanded(
-            child: FutureBuilder(
-                future: _future,
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  };
-                  final instruments = snapshot.data!;
-                  return ListView.builder(
-                    itemCount: instruments.length,
-                    itemBuilder: ((context, index) {
-                      final instrument = instruments[index];
-                      return ListTile(
-                        title: Text(instrument['name']),
-                      );
-                    }),
-                  );
-                }
-              ),
-          ),
           Expanded(
             child: ListView.builder(
               padding: EdgeInsets.all(8.0),
