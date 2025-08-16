@@ -12,6 +12,9 @@ Future<void> main() async {
     anonKey: 'sb_publishable_U90sK0zFlOSCRMqAN1yrrQ_EFNlZdSA',
   );
 
+  var supabase = Supabase.instance.client;
+  await supabase.auth.signInAnonymously();
+
   runApp(MyApp());
 }
 
