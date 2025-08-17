@@ -65,7 +65,8 @@ class HistoryPage extends StatefulWidget {
 class _HistoryPageState extends State<HistoryPage> {
   final _future = Supabase.instance.client
       .from('chat')
-      .select();
+      .select()
+      .order('cmodified', ascending: false);
 
   @override
   Widget build(BuildContext context) {
