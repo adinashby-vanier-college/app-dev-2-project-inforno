@@ -64,7 +64,7 @@ class HistoryPage extends StatefulWidget {
 
 class _HistoryPageState extends State<HistoryPage> {
   final _future = Supabase.instance.client
-      .from('instruments')
+      .from('chat')
       .select();
 
   @override
@@ -80,13 +80,13 @@ class _HistoryPageState extends State<HistoryPage> {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 };
-                final instruments = snapshot.data!;
+                final chats = snapshot.data!;
                 return ListView.builder(
-                  itemCount: instruments.length,
+                  itemCount: chats.length,
                   itemBuilder: ((context, index) {
-                    final instrument = instruments[index];
+                    final chat = chats[index];
                     return ListTile(
-                      title: Text(instrument['name']),
+                      title: Text(chat['ctitle']),
                     );
                   }),
                 );
