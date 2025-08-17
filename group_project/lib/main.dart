@@ -207,7 +207,7 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
     Future.wait([
       _sendMessage(text, 'deepseek/deepseek-r1-0528:free', _messages1),
       _sendMessage(text, 'google/gemma-3n-e4b-it:free', _messages2),
-      _sendMessage(text, 'tngtech/deepseek-r1t-chimera:free', _messages3),
+      _sendMessage(text, 'openai/gpt-oss-20b:free', _messages3),
     ]);
     String title;
     if(_messages[0].content.length < 44) {
