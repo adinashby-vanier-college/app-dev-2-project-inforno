@@ -209,9 +209,13 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
       _sendMessage(text, 'google/gemma-3n-e4b-it:free', _messages2),
       _sendMessage(text, 'tngtech/deepseek-r1t-chimera:free', _messages3),
     ]);
-
-    insertChat(_messages[0].content.substring(0, 44),
-      jsonEncode(_messages));
+    String title;
+    if(_messages[0].content.length < 44) {
+      title = _messages[0].content;
+    } else {
+      title = _messages[0].content.substring(0, 44);
+    }
+    insertChat(title,jsonEncode(_messages));
   }
 
   @override
