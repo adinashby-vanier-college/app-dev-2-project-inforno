@@ -3,6 +3,9 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
+
+final supabase = Supabase.instance.client;
 
 Future<void> main() async {
   await dotenv.load(fileName: ".env");
@@ -15,7 +18,31 @@ Future<void> main() async {
   var supabase = Supabase.instance.client;
   await supabase.auth.signInAnonymously();
 
+  insertData();
+
   runApp(MyApp());
+}
+
+Future<void> insertData() async {
+  try {
+    final User? user = Supabase.instance.client.auth.currentUser;
+
+    if (user != null) {
+      final String userId = user.id;
+      final data = await supabase
+          .from('chat') // Replace 'your_table_name' with your actual table name
+          .insert({
+            'cid': Uuid().v4(),
+            'cuid': userId,
+            'ctitle': 'test', // Replace with your column names and values
+            'cjson': '{}',
+            // Add more key-value pairs for other columns
+          });
+      print('Data inserted successfully: $data');
+    }
+  } catch (error) {
+    print('Error inserting data: $error');
+  }
 }
 
 class MyApp extends StatelessWidget {
