@@ -2,10 +2,48 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
+
+final supabase = Supabase.instance.client;
 
 Future<void> main() async {
   await dotenv.load(fileName: ".env");
+
+  await Supabase.initialize(
+    url: 'https://soakitbaljxefdzhegso.supabase.co',
+    anonKey: 'sb_publishable_U90sK0zFlOSCRMqAN1yrrQ_EFNlZdSA',
+  );
+
+  var supabase = Supabase.instance.client;
+  await supabase.auth.signInAnonymously();
+
   runApp(MyApp());
+}
+
+Future<String> insertChat(String ctitle, String cjson) async {
+  try {
+    final User? user = Supabase.instance.client.auth.currentUser;
+    final String chatId = Uuid().v4();
+
+    if (user != null) {
+      final String userId = user.id;
+      final data = await supabase
+          .from('chat') // Replace 'your_table_name' with your actual table name
+          .insert({
+            'cid': chatId,
+            'cuid': userId,
+            'ctitle': ctitle, // Replace with your column names and values
+            'cjson': cjson,
+            // Add more key-value pairs for other columns
+          });
+      print('Data inserted successfully: $data');
+    }
+    return chatId;
+  } catch (error) {
+    print('Error inserting data: $error');
+    return "";
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -20,7 +58,61 @@ class MyApp extends StatelessWidget {
   }
 }
 
+class HistoryPage extends StatefulWidget {
+  @override
+  _HistoryPageState createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage> {
+  final _future = Supabase.instance.client
+      .from('chat')
+      .select()
+      .order('cmodified', ascending: false);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        appBar: AppBar(
+          title: Text("History - Inforno"),
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: FutureBuilder(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  };
+                  final chats = snapshot.data!;
+                  return ListView.builder(
+                    itemCount: chats.length,
+                    itemBuilder: ((context, index) {
+                      final chat = chats[index];
+                      return ListTile(
+                        title: Text(chat['ctitle']),
+                        onTap: () {
+                            Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                            builder: (context) =>
+                                OpenRouterChatPage(chatId: chat['cid'])));
+                        },
+                      );
+                    }),
+                  );
+                }
+              )
+            ),
+          ]
+        ),
+      );
+  }
+}
+
 class OpenRouterChatPage extends StatefulWidget {
+  String chatId = "";
+  OpenRouterChatPage({this.chatId = ""});
   @override
   _OpenRouterChatPageState createState() => _OpenRouterChatPageState();
 }
@@ -112,15 +204,51 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
       _isLoading = true;
     });
 
-    _sendMessage(text, 'deepseek/deepseek-r1-0528:free', _messages1);
-    _sendMessage(text, 'google/gemma-3n-e4b-it:free', _messages2);
-    _sendMessage(text, 'tngtech/deepseek-r1t-chimera:free', _messages3);
+    Future.wait([
+      _sendMessage(text, 'deepseek/deepseek-r1-0528:free', _messages1),
+      _sendMessage(text, 'google/gemma-3n-e4b-it:free', _messages2),
+      _sendMessage(text, 'tngtech/deepseek-r1t-chimera:free', _messages3),
+    ]);
+    String title;
+    if(_messages[0].content.length < 44) {
+      title = _messages[0].content;
+    } else {
+      title = _messages[0].content.substring(0, 44);
+    }
+    insertChat(title,jsonEncode(_messages));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Inforno')),
+      appBar: AppBar(
+        title: Text('Chat ${widget.chatId} -  Inforno'),
+        leading: PopupMenuButton(
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              child: Text("New Chat"),
+              onTap: () {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) =>
+                            MyApp()));
+              },
+            ),
+            PopupMenuItem(
+              child: Text("History"),
+              onTap: () {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) =>
+                            HistoryPage()));
+              },
+            ),
+          ]
+        )
+      ),
+      //appBar: AppBar(title: Text('Inforno')),
       body: Column(
         children: [
           Expanded(
@@ -161,6 +289,13 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
 class Message {
   final String content;
   final String role;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'content': content,
+      'role': role,
+    };
+  }
 
   Message({required this.content, required this.role});
 }
