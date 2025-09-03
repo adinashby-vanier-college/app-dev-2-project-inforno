@@ -1,8 +1,11 @@
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+// lib/main.dart
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_auth_ui/supabase_auth_ui.dart';
 import 'package:uuid/uuid.dart';
 
 final supabase = Supabase.instance.client;
@@ -16,14 +19,12 @@ Future<void> main() async {
     anonKey: 'sb_publishable_U90sK0zFlOSCRMqAN1yrrQ_EFNlZdSA',
   );
 
-  await Supabase.instance.client.auth.signInAnonymously();
-
   runApp(const MyApp());
 }
 
 Future<String> insertChat(String ctitle, String cjson) async {
   try {
-    final User? user = Supabase.instance.client.auth.currentUser;
+    final User? user = supabase.auth.currentUser;
     final String chatId = const Uuid().v4();
 
     if (user != null) {
@@ -57,8 +58,8 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
       title: 'Inforno',
+      debugShowCheckedModeBanner: false,
       themeMode: _mode,
       theme: ThemeData(
         useMaterial3: true,
@@ -80,7 +81,7 @@ class _MyAppState extends State<MyApp> {
           isDense: true,
         ),
       ),
-      home: OpenRouterChatPage(
+      home: AuthGate(
         onToggleTheme: () {
           setState(() {
             _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
@@ -91,6 +92,227 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
+class AuthGate extends StatefulWidget {
+  final VoidCallback? onToggleTheme;
+  const AuthGate({super.key, this.onToggleTheme});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  // Keep a reference so we can dispose the listener.
+  late final Stream<AuthState> _authStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _authStream = supabase.auth.onAuthStateChange;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<AuthState>(
+      stream: _authStream,
+      builder: (context, snapshot) {
+        final session = supabase.auth.currentSession;
+        if (session == null) {
+          // Not signed in → show Supabase Auth UI
+          return AuthScreen(onToggleTheme: widget.onToggleTheme);
+        }
+        // Signed in → go to your existing chat page
+        return OpenRouterChatPage(onToggleTheme: widget.onToggleTheme);
+      },
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// AuthScreen composed of Supabase Auth UI widgets
+class AuthScreen extends StatelessWidget {
+  final VoidCallback? onToggleTheme;
+  const AuthScreen({super.key, this.onToggleTheme});
+
+  // Deep link for iOS/Android; leave null on web.
+  static const String _mobileRedirect = 'inforno://callback';
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Sign in • Inforno'),
+        actions: [
+          IconButton(
+            tooltip: 'Toggle theme',
+            onPressed: onToggleTheme,
+            icon: const Icon(Icons.brightness_6_outlined),
+          ),
+        ],
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Welcome',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Sign in to start chatting',
+                        style: TextStyle(color: cs.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Email / Password
+                      SupaEmailAuth(
+                        redirectTo: kIsWeb ? null : _mobileRedirect,
+                        onSignInComplete: (AuthResponse res) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Signed in!')),
+                          );
+                        },
+                        onSignUpComplete: (AuthResponse res) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text(
+                                    'Signed up! Check your email if confirmation is enabled.')),
+                          );
+                        },
+                        metadataFields: [
+                          MetaDataField(
+                            prefixIcon: const Icon(Icons.person_outline),
+                            label: 'Username',
+                            key: 'username',
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Magic link (optional)
+                      ExpansionTile(
+                        tilePadding: EdgeInsets.zero,
+                        title: const Text('Use a magic link instead'),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: SupaMagicAuth(
+                              redirectUrl: kIsWeb ? null : _mobileRedirect,
+                              onSuccess: (Session _) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Magic link sent!')),
+                                );
+                              },
+                              onError: (error) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error: $error')),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // Socials (Google/Apple shown; add others if enabled)
+                      SupaSocialsAuth(
+                        socialProviders: const [
+                          OAuthProvider.apple,
+                          OAuthProvider.google,
+                        ],
+                        colored: true,
+                        redirectUrl: kIsWeb ? null : _mobileRedirect,
+                        onSuccess: (Session _) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Signed in!')),
+                          );
+                        },
+                        onError: (error) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error: $error')),
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Continue as guest (anonymous)
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.person_outline),
+                        label: const Text('Continue as guest'),
+                        onPressed: () async {
+                          try {
+                            await supabase.auth.signInAnonymously();
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: $e')),
+                            );
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Password reset
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Reset password',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SupaResetPassword(
+                        accessToken: supabase.auth.currentSession?.accessToken,
+                        onSuccess: (UserResponse _) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Email sent!')),
+                          );
+                        },
+                        onError: (error) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error: $error')),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Your existing pages, lightly adapted (added Sign out to the drawer)
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
   @override
@@ -101,7 +323,7 @@ class _HistoryPageState extends State<HistoryPage> {
   late Future<List<dynamic>> _future;
 
   Future<List<dynamic>> _fetchChats() async {
-    final data = await Supabase.instance.client
+    final data = await supabase
         .from('chat')
         .select()
         .order('cmodified', ascending: false);
@@ -147,30 +369,23 @@ class _HistoryPageState extends State<HistoryPage> {
 
     if (newTitle == null) return; // cancelled
     if (newTitle.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Title can't be empty.")));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("Title can't be empty.")));
       return;
     }
 
     try {
-      await Supabase.instance.client
-          .from('chat')
-          .update({'ctitle': newTitle})
-          .eq('cid', cid);
+      await supabase.from('chat').update({'ctitle': newTitle}).eq('cid', cid);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Title updated')));
-      setState(() {
-        _future = _fetchChats(); // refresh list
-      });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Title updated')));
+      setState(() => _future = _fetchChats());
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error updating: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Error updating: $e')));
     }
   }
 
@@ -244,6 +459,7 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
   final List<Message> _messages2 = [];
   final List<Message> _messages3 = [];
   bool _isLoading = false;
+
   late final String apiKey;
   final String endpoint = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -271,10 +487,10 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
   }
 
   Future<void> _sendMessage(
-    String text,
-    String model,
-    List<Message> messageList,
-  ) async {
+      String text,
+      String model,
+      List<Message> messageList,
+      ) async {
     final headers = {
       'Authorization': 'Bearer $apiKey',
       'Content-Type': 'application/json',
@@ -283,16 +499,13 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
     final body = jsonEncode({
       'model': model,
       'messages':
-          messageList
-              .map((msg) => {'role': msg.role, 'content': msg.content})
-              .toList(),
+      messageList
+          .map((msg) => {'role': msg.role, 'content': msg.content})
+          .toList(),
     });
 
-    final response = await http.post(
-      Uri.parse(endpoint),
-      headers: headers,
-      body: body,
-    );
+    final response =
+    await http.post(Uri.parse(endpoint), headers: headers, body: body);
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -338,12 +551,11 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
               .firstWhere((m) => m.role == 'user', orElse: () => userMessage)
               .content;
       final title =
-          firstUser.length <= 44 ? firstUser : firstUser.substring(0, 44);
+      firstUser.length <= 44 ? firstUser : firstUser.substring(0, 44);
       await insertChat(title, jsonEncode(_messages));
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Reply received')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Reply received')));
       }
     } catch (e) {
       setState(() {
@@ -366,6 +578,14 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
         builder: (_) => OpenRouterChatPage(onToggleTheme: widget.onToggleTheme),
       ),
     );
+  }
+
+  Future<void> _signOut() async {
+    await supabase.auth.signOut();
+    if (!mounted) return;
+    // Pop to root; AuthGate will show the AuthScreen automatically
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    setState(() {});
   }
 
   @override
@@ -408,6 +628,8 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
               context,
               MaterialPageRoute(builder: (_) => const HistoryPage()),
             );
+          } else if (index == 2) {
+            _signOut();
           }
         },
         children: [
@@ -428,6 +650,11 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
             selectedIcon: Icon(Icons.history_toggle_off),
             label: Text('History'),
           ),
+          const NavigationDrawerDestination(
+            icon: Icon(Icons.logout),
+            selectedIcon: Icon(Icons.logout),
+            label: Text('Sign out'),
+          ),
           const Padding(
             padding: EdgeInsets.fromLTRB(28, 16, 16, 6),
             child: Text(
@@ -438,25 +665,17 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: SegmentedButton<String>(
-              segments:
-                  models
-                      .map(
-                        (m) => ButtonSegment<String>(
-                          value: m,
-                          label: Text(_prettyModel(m)),
-                        ),
-                      )
-                      .toList(),
+              segments: models
+                  .map((m) => ButtonSegment<String>(
+                value: m,
+                label: Text(_prettyModel(m)),
+              ))
+                  .toList(),
               selected: _selectedModels,
               multiSelectionEnabled: true,
               showSelectedIcon: false,
               onSelectionChanged: (set) {
-                setState(
-                  () =>
-                      _selectedModels
-                        ..clear()
-                        ..addAll(set),
-                );
+                setState(() => _selectedModels..clear()..addAll(set));
               },
             ),
           ),
