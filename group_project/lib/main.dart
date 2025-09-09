@@ -465,7 +465,11 @@ class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
 
   int _drawerIndex = 0;
 
-  final Set<String> _selectedModels = {'deepseek/deepseek-r1-0528:free'};
+  final Set<String> _selectedModels = {
+    'deepseek/deepseek-r1-0528:free',
+    'google/gemma-3n-e4b-it:free',
+    'openai/gpt-oss-20b:free'
+  };
   static const models = <String>{
     'deepseek/deepseek-r1-0528:free',
     'google/gemma-3n-e4b-it:free',
