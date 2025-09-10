@@ -16,6 +16,8 @@ const Set<String> kAvailableModels = {
 };
 final ValueNotifier<Set<String>> selectedModels = ValueNotifier<Set<String>>({
   'deepseek/deepseek-r1-0528:free',
+  'google/gemma-3n-e4b-it:free',
+  'openai/gpt-oss-20b:free',
 });
 
 Future<void> main() async {
