@@ -1,4 +1,3 @@
-// lib/main.dart
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +8,15 @@ import 'package:supabase_auth_ui/supabase_auth_ui.dart';
 import 'package:uuid/uuid.dart';
 
 final supabase = Supabase.instance.client;
+
+const Set<String> kAvailableModels = {
+  'deepseek/deepseek-r1-0528:free',
+  'google/gemma-3n-e4b-it:free',
+  'openai/gpt-oss-20b:free',
+};
+final ValueNotifier<Set<String>> selectedModels = ValueNotifier<Set<String>>({
+  'deepseek/deepseek-r1-0528:free',
+});
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -81,14 +89,24 @@ class _MyAppState extends State<MyApp> {
           isDense: true,
         ),
       ),
-      home: AuthGate(
-        onToggleTheme: () {
-          setState(() {
-            _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
-          });
-        },
-      ),
+      routes: {
+        '/': (_) => AuthGate(onToggleTheme: _toggleTheme),
+        '/auth/register': (_) => const RegisterMagicPage(),
+        '/auth/phone': (_) => const PhoneAuthPage(),
+        '/chat/new': (_) => const NewChatPage(),
+        '/chat': (_) => const ChatPage(),
+        '/history': (_) => const HistoryPage(),
+        '/models': (_) => const ModelPickerPage(),
+        '/settings': (_) => SettingsPage(onToggleTheme: _toggleTheme),
+      },
+      initialRoute: '/',
     );
+  }
+
+  void _toggleTheme() {
+    setState(() {
+      _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    });
   }
 }
 
@@ -101,7 +119,6 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  // Keep a reference so we can dispose the listener.
   late final Stream<AuthState> _authStream;
 
   @override
@@ -117,23 +134,18 @@ class _AuthGateState extends State<AuthGate> {
       builder: (context, snapshot) {
         final session = supabase.auth.currentSession;
         if (session == null) {
-          // Not signed in → show Supabase Auth UI
           return AuthScreen(onToggleTheme: widget.onToggleTheme);
         }
-        // Signed in → go to your existing chat page
-        return OpenRouterChatPage(onToggleTheme: widget.onToggleTheme);
+        return const ChatPage();
       },
     );
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// AuthScreen composed of Supabase Auth UI widgets
 class AuthScreen extends StatelessWidget {
   final VoidCallback? onToggleTheme;
   const AuthScreen({super.key, this.onToggleTheme});
 
-  // Deep link for iOS/Android; leave null on web.
   static const String _mobileRedirect = 'inforno://callback';
 
   @override
@@ -143,6 +155,11 @@ class AuthScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Sign in • Inforno'),
         actions: [
+          IconButton(
+            tooltip: 'Settings',
+            onPressed: () => Navigator.pushNamed(context, '/settings'),
+            icon: const Icon(Icons.settings_outlined),
+          ),
           IconButton(
             tooltip: 'Toggle theme',
             onPressed: onToggleTheme,
@@ -176,19 +193,20 @@ class AuthScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 20),
 
-                      // Email / Password
                       SupaEmailAuth(
                         redirectTo: kIsWeb ? null : _mobileRedirect,
-                        onSignInComplete: (AuthResponse res) {
+                        onSignInComplete: (AuthResponse _) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Signed in!')),
                           );
                         },
-                        onSignUpComplete: (AuthResponse res) {
+                        onSignUpComplete: (AuthResponse _) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                                content: Text(
-                                    'Signed up! Check your email if confirmation is enabled.')),
+                              content: Text(
+                                'Signed up! Check your email if confirmation is enabled.',
+                              ),
+                            ),
                           );
                         },
                         metadataFields: [
@@ -201,57 +219,35 @@ class AuthScreen extends StatelessWidget {
                       ),
 
                       const SizedBox(height: 16),
-
-                      // Magic link (optional)
-                      ExpansionTile(
-                        tilePadding: EdgeInsets.zero,
-                        title: const Text('Use a magic link instead'),
+                      Row(
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8.0),
-                            child: SupaMagicAuth(
-                              redirectUrl: kIsWeb ? null : _mobileRedirect,
-                              onSuccess: (Session _) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Magic link sent!')),
-                                );
-                              },
-                              onError: (error) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Error: $error')),
-                                );
-                              },
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.mail_outline),
+                              label: const Text('Register / Magic'),
+                              onPressed:
+                                  () => Navigator.pushNamed(
+                                    context,
+                                    '/auth/register',
+                                  ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.sms_outlined),
+                              label: const Text('Phone Auth'),
+                              onPressed:
+                                  () => Navigator.pushNamed(
+                                    context,
+                                    '/auth/phone',
+                                  ),
                             ),
                           ),
                         ],
                       ),
 
                       const SizedBox(height: 12),
-
-                      // Socials (Google/Apple shown; add others if enabled)
-                      SupaSocialsAuth(
-                        socialProviders: const [
-                          OAuthProvider.apple,
-                          OAuthProvider.google,
-                        ],
-                        colored: true,
-                        redirectUrl: kIsWeb ? null : _mobileRedirect,
-                        onSuccess: (Session _) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Signed in!')),
-                          );
-                        },
-                        onError: (error) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error: $error')),
-                          );
-                        },
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Continue as guest (anonymous)
                       OutlinedButton.icon(
                         icon: const Icon(Icons.person_outline),
                         label: const Text('Continue as guest'),
@@ -271,8 +267,6 @@ class AuthScreen extends StatelessWidget {
               ),
 
               const SizedBox(height: 16),
-
-              // Password reset
               Card(
                 clipBehavior: Clip.antiAlias,
                 child: Padding(
@@ -281,9 +275,7 @@ class AuthScreen extends StatelessWidget {
                     children: [
                       const Text(
                         'Reset password',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 8),
                       SupaResetPassword(
@@ -311,8 +303,557 @@ class AuthScreen extends StatelessWidget {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Your existing pages, lightly adapted (added Sign out to the drawer)
+class RegisterMagicPage extends StatelessWidget {
+  const RegisterMagicPage({super.key});
+  static const String _mobileRedirect = 'inforno://callback';
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Register • Magic link')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Magic link',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SupaMagicAuth(
+                        redirectUrl: kIsWeb ? null : _mobileRedirect,
+                        onSuccess: (Session _) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Magic link sent!')),
+                          );
+                        },
+                        onError:
+                            (error) => ScaffoldMessenger.of(
+                              context,
+                            ).showSnackBar(SnackBar(content: Text('$error'))),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Or sign up with',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      SupaSocialsAuth(
+                        socialProviders: const [
+                          OAuthProvider.apple,
+                          OAuthProvider.google,
+                        ],
+                        colored: true,
+                        onSuccess: (Session _) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Signed in!')),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class PhoneAuthPage extends StatefulWidget {
+  const PhoneAuthPage({super.key});
+  @override
+  State<PhoneAuthPage> createState() => _PhoneAuthPageState();
+}
+
+class _PhoneAuthPageState extends State<PhoneAuthPage> {
+  final _phoneCtrl = TextEditingController();
+  final _otpCtrl = TextEditingController();
+  bool _sent = false;
+  bool _busy = false;
+
+  Future<void> _sendCode() async {
+    setState(() => _busy = true);
+    try {
+      await supabase.auth.signInWithOtp(phone: _phoneCtrl.text.trim());
+      setState(() => _sent = true);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Code sent via SMS')));
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _verifyCode() async {
+    setState(() => _busy = true);
+    try {
+      await supabase.auth.verifyOTP(
+        type: OtpType.sms,
+        token: _otpCtrl.text.trim(),
+        phone: _phoneCtrl.text.trim(),
+      );
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Phone verified!')));
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      setState(() => _busy = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _phoneCtrl.dispose();
+    _otpCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final busy =
+        _busy ? const LinearProgressIndicator() : const SizedBox.shrink();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Phone Auth')),
+      body: Column(
+        children: [
+          busy,
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone (+1 555 123 4567)',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (_sent)
+                  TextField(
+                    controller: _otpCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'SMS Code'),
+                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.sms),
+                        onPressed: _sent ? null : _sendCode,
+                        label: const Text('Send code'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.verified),
+                        onPressed: _sent ? _verifyCode : null,
+                        label: const Text('Verify'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class NewChatPage extends StatefulWidget {
+  const NewChatPage({super.key});
+  @override
+  State<NewChatPage> createState() => _NewChatPageState();
+}
+
+class _NewChatPageState extends State<NewChatPage> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _start() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    Navigator.pushNamed(
+      context,
+      '/chat',
+      arguments: ChatPageArgs(initialPrompt: text),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('New Chat')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            ValueListenableBuilder(
+              valueListenable: selectedModels,
+              builder: (context, Set<String> sel, _) {
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: -6,
+                  children:
+                      sel
+                          .map((m) => Chip(label: Text(_prettyModel(m))))
+                          .toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              minLines: 3,
+              maxLines: 6,
+              decoration: const InputDecoration(
+                hintText: 'Ask something to kick off the chat…',
+                prefixIcon: Icon(Icons.message_outlined),
+              ),
+              onSubmitted: (_) => _start(),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.send),
+                    onPressed: _start,
+                    label: const Text('Start'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.tune),
+                  onPressed: () => Navigator.pushNamed(context, '/models'),
+                  label: const Text('Models'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ChatPageArgs {
+  final String? initialPrompt;
+  final String? existingChatId;
+  const ChatPageArgs({this.initialPrompt, this.existingChatId});
+}
+
+class ChatPage extends StatefulWidget {
+  const ChatPage({super.key});
+
+  @override
+  State<ChatPage> createState() => _ChatPageState();
+}
+
+class _ChatPageState extends State<ChatPage> {
+  final _controller = TextEditingController();
+  final List<Message> _messages = [];
+  final List<Message> _m1 = [];
+  final List<Message> _m2 = [];
+  final List<Message> _m3 = [];
+  bool _loading = false;
+
+  late final String apiKey;
+  final String endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+
+  String? _chatId;
+
+  @override
+  void initState() {
+    super.initState();
+    apiKey = dotenv.env['OPENROUTER_API_KEY'] ?? '';
+    if (apiKey.isEmpty) {
+      _messages.add(
+        const Message(
+          content: 'Error: Missing API key. Check your .env file.',
+          role: 'system',
+        ),
+      );
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is ChatPageArgs && (args.initialPrompt?.isNotEmpty ?? false)) {
+        _controller.text = args.initialPrompt!;
+        _sendMessages(_controller.text);
+      }
+      if (args is ChatPageArgs && args.existingChatId != null) {
+        _chatId = args.existingChatId;
+      }
+    });
+  }
+
+  Future<void> _sendMessage(
+    String text,
+    String model,
+    List<Message> list,
+  ) async {
+    final headers = {
+      'Authorization': 'Bearer $apiKey',
+      'Content-Type': 'application/json',
+    };
+    final body = jsonEncode({
+      'model': model,
+      'messages':
+          list.map((m) => {'role': m.role, 'content': m.content}).toList(),
+    });
+    final response = await http.post(
+      Uri.parse(endpoint),
+      headers: headers,
+      body: body,
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final content = data['choices'][0]['message']['content'];
+      setState(() {
+        _messages.add(Message(content: '$model: $content', role: 'system'));
+        list.add(Message(content: content, role: 'assistant'));
+      });
+    } else {
+      throw Exception('Failed with ${response.statusCode}: ${response.body}');
+    }
+  }
+
+  Future<void> _sendMessages(String text) async {
+    if (text.trim().isEmpty || apiKey.isEmpty) return;
+
+    final userMsg = Message(content: text, role: 'user');
+    setState(() {
+      _messages.add(userMsg);
+      _m1.add(userMsg);
+      _m2.add(userMsg);
+      _m3.add(userMsg);
+      _loading = true;
+    });
+
+    try {
+      final models = selectedModels.value;
+      final tasks = <Future<void>>[];
+      for (final m in models) {
+        if (m.contains('deepseek')) {
+          tasks.add(_sendMessage(text, m, _m1));
+        } else if (m.contains('gemma')) {
+          tasks.add(_sendMessage(text, m, _m2));
+        } else {
+          tasks.add(_sendMessage(text, m, _m3));
+        }
+      }
+      await Future.wait(tasks);
+
+      final firstUser =
+          _messages
+              .firstWhere((m) => m.role == 'user', orElse: () => userMsg)
+              .content;
+      final title =
+          firstUser.length <= 44 ? firstUser : firstUser.substring(0, 44);
+      _chatId ??= await insertChat(title, jsonEncode(_messages));
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Reply received')));
+      }
+    } catch (e) {
+      setState(() {
+        final errorMsg = 'Error: $e';
+        for (final l in [_messages, _m1, _m2, _m3]) {
+          l.add(Message(content: errorMsg, role: 'system'));
+        }
+      });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+      _controller.clear();
+    }
+  }
+
+  void _openDrawerRoute(String route) {
+    Navigator.pop(context);
+    if (ModalRoute.of(context)?.settings.name == route) return;
+    Navigator.pushNamed(context, route);
+  }
+
+  Future<void> _signOut() async {
+    await supabase.auth.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Chat ${_chatId != null ? "• $_chatId" : ""}'),
+        actions: [
+          IconButton(
+            tooltip: 'New Chat',
+            onPressed: () => Navigator.pushNamed(context, '/chat/new'),
+            icon: const Icon(Icons.add_comment_outlined),
+          ),
+          IconButton(
+            tooltip: 'History',
+            onPressed: () => Navigator.pushNamed(context, '/history'),
+            icon: const Icon(Icons.history),
+          ),
+          IconButton(
+            tooltip: 'Models',
+            onPressed: () => Navigator.pushNamed(context, '/models'),
+            icon: const Icon(Icons.tune),
+          ),
+          IconButton(
+            tooltip: 'Settings',
+            onPressed: () => Navigator.pushNamed(context, '/settings'),
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
+      ),
+      drawer: NavigationDrawer(
+        onDestinationSelected: (index) {
+          switch (index) {
+            case 0:
+              _openDrawerRoute('/chat/new');
+              break;
+            case 1:
+              _openDrawerRoute('/chat');
+              break;
+            case 2:
+              _openDrawerRoute('/history');
+              break;
+            case 3:
+              _openDrawerRoute('/models');
+              break;
+            case 4:
+              _openDrawerRoute('/settings');
+              break;
+            case 5:
+              _signOut();
+              break;
+          }
+        },
+        children: const [
+          Padding(
+            padding: EdgeInsets.fromLTRB(28, 16, 16, 6),
+            child: Text(
+              'Navigate',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          NavigationDrawerDestination(
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble),
+            label: Text('New Chat'),
+          ),
+          NavigationDrawerDestination(
+            icon: Icon(Icons.forum_outlined),
+            selectedIcon: Icon(Icons.forum),
+            label: Text('Chat'),
+          ),
+          NavigationDrawerDestination(
+            icon: Icon(Icons.history),
+            selectedIcon: Icon(Icons.history_toggle_off),
+            label: Text('History'),
+          ),
+          NavigationDrawerDestination(
+            icon: Icon(Icons.tune),
+            selectedIcon: Icon(Icons.tune),
+            label: Text('Model Picker'),
+          ),
+          NavigationDrawerDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: Text('Settings'),
+          ),
+          NavigationDrawerDestination(
+            icon: Icon(Icons.logout),
+            selectedIcon: Icon(Icons.logout),
+            label: Text('Sign out'),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          if (_loading) const LinearProgressIndicator(),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _messages.length,
+              itemBuilder:
+                  (context, index) => ChatBubble(message: _messages[index]),
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      minLines: 1,
+                      maxLines: 5,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: _sendMessages,
+                      decoration: const InputDecoration(
+                        hintText: 'Type your message…',
+                        prefixIcon: Icon(Icons.message_outlined),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: () => _sendMessages(_controller.text),
+                    icon: const Icon(Icons.send),
+                    label: const Text('Send'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
   @override
@@ -367,25 +908,27 @@ class _HistoryPageState extends State<HistoryPage> {
       },
     );
 
-    if (newTitle == null) return; // cancelled
+    if (newTitle == null) return;
     if (newTitle.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Title can't be empty.")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Title can't be empty.")));
       return;
     }
 
     try {
       await supabase.from('chat').update({'ctitle': newTitle}).eq('cid', cid);
-
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Title updated')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Title updated')));
       setState(() => _future = _fetchChats());
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Error updating: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error updating: $e')));
     }
   }
 
@@ -396,13 +939,11 @@ class _HistoryPageState extends State<HistoryPage> {
       body: FutureBuilder<List<dynamic>>(
         future: _future,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+          if (!snapshot.hasData)
             return const Center(child: CircularProgressIndicator());
-          }
           final chats = snapshot.data!;
-          if (chats.isEmpty) {
+          if (chats.isEmpty)
             return const Center(child: Text("No chats yet — go start one!"));
-          }
           return ListView.separated(
             padding: const EdgeInsets.all(12),
             itemCount: chats.length,
@@ -411,7 +952,6 @@ class _HistoryPageState extends State<HistoryPage> {
               final chat = chats[index] as Map<String, dynamic>;
               final title = (chat['ctitle'] ?? 'Untitled') as String;
               final cid = (chat['cid'] ?? '') as String;
-
               return Card(
                 clipBehavior: Clip.antiAlias,
                 child: ListTile(
@@ -423,17 +963,13 @@ class _HistoryPageState extends State<HistoryPage> {
                   ),
                   leading: const Icon(Icons.chat_bubble_outline),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => OpenRouterChatPage(chatId: cid),
+                  onTap:
+                      () => Navigator.pushNamed(
+                        context,
+                        '/chat',
+                        arguments: ChatPageArgs(existingChatId: cid),
                       ),
-                    );
-                  },
-                  onLongPress: () {
-                    _renameChat(cid: cid, currentTitle: title);
-                  },
+                  onLongPress: () => _renameChat(cid: cid, currentTitle: title),
                 ),
               );
             },
@@ -444,300 +980,105 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 }
 
-class OpenRouterChatPage extends StatefulWidget {
-  final String chatId;
-  final VoidCallback? onToggleTheme;
-  const OpenRouterChatPage({super.key, this.chatId = "", this.onToggleTheme});
-  @override
-  State<OpenRouterChatPage> createState() => _OpenRouterChatPageState();
-}
-
-class _OpenRouterChatPageState extends State<OpenRouterChatPage> {
-  final _controller = TextEditingController();
-  final List<Message> _messages = [];
-  final List<Message> _messages1 = [];
-  final List<Message> _messages2 = [];
-  final List<Message> _messages3 = [];
-  bool _isLoading = false;
-
-  late final String apiKey;
-  final String endpoint = 'https://openrouter.ai/api/v1/chat/completions';
-
-  int _drawerIndex = 0;
-
-  final Set<String> _selectedModels = {
-    'deepseek/deepseek-r1-0528:free',
-    'google/gemma-3n-e4b-it:free',
-    'openai/gpt-oss-20b:free'
-  };
-  static const models = <String>{
-    'deepseek/deepseek-r1-0528:free',
-    'google/gemma-3n-e4b-it:free',
-    'openai/gpt-oss-20b:free'
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    apiKey = dotenv.env['OPENROUTER_API_KEY'] ?? '';
-    if (apiKey.isEmpty) {
-      _messages.add(
-        const Message(
-          content: 'Error: Missing API key. Check your .env file.',
-          role: 'system',
-        ),
-      );
-    }
-  }
-
-  Future<void> _sendMessage(
-      String text,
-      String model,
-      List<Message> messageList,
-      ) async {
-    final headers = {
-      'Authorization': 'Bearer $apiKey',
-      'Content-Type': 'application/json',
-    };
-
-    final body = jsonEncode({
-      'model': model,
-      'messages':
-      messageList
-          .map((msg) => {'role': msg.role, 'content': msg.content})
-          .toList(),
-    });
-
-    final response =
-    await http.post(Uri.parse(endpoint), headers: headers, body: body);
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final content = data['choices'][0]['message']['content'];
-      setState(() {
-        final newMsg = Message(content: '$model: $content', role: 'system');
-        _messages.add(newMsg);
-        messageList.add(Message(content: content, role: 'assistant'));
-      });
-    } else {
-      throw Exception('Failed with ${response.statusCode}: ${response.body}');
-    }
-  }
-
-  Future<void> _sendMessages(String text) async {
-    if (text.trim().isEmpty || apiKey.isEmpty) return;
-
-    final userMessage = Message(content: text, role: 'user');
-
-    setState(() {
-      _messages.add(userMessage);
-      _messages1.add(userMessage);
-      _messages2.add(userMessage);
-      _messages3.add(userMessage);
-      _isLoading = true;
-    });
-
-    try {
-      final tasks = <Future<void>>[];
-      for (final m in _selectedModels) {
-        if (m.contains('deepseek')) {
-          tasks.add(_sendMessage(text, m, _messages1));
-        } else if (m.contains('gemma')) {
-          tasks.add(_sendMessage(text, m, _messages2));
-        } else {
-          tasks.add(_sendMessage(text, m, _messages3));
-        }
-      }
-      await Future.wait(tasks);
-
-      final firstUser =
-          _messages
-              .firstWhere((m) => m.role == 'user', orElse: () => userMessage)
-              .content;
-      final title =
-      firstUser.length <= 44 ? firstUser : firstUser.substring(0, 44);
-      await insertChat(title, jsonEncode(_messages));
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Reply received')));
-      }
-    } catch (e) {
-      setState(() {
-        final errorMsg = 'Error: $e';
-        _messages.add(Message(content: errorMsg, role: 'system'));
-        _messages1.add(Message(content: errorMsg, role: 'system'));
-        _messages2.add(Message(content: errorMsg, role: 'system'));
-        _messages3.add(Message(content: errorMsg, role: 'system'));
-      });
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-      _controller.clear();
-    }
-  }
-
-  void _newChat() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => OpenRouterChatPage(onToggleTheme: widget.onToggleTheme),
-      ),
-    );
-  }
-
-  Future<void> _signOut() async {
-    await supabase.auth.signOut();
-    if (!mounted) return;
-    // Pop to root; AuthGate will show the AuthScreen automatically
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    setState(() {});
-  }
+class ModelPickerPage extends StatelessWidget {
+  const ModelPickerPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Inforno ${widget.chatId.isNotEmpty ? "• ${widget.chatId}" : ""}',
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'History',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const HistoryPage()),
-              );
-            },
-            icon: const Icon(Icons.history),
-          ),
-          IconButton(
-            tooltip: 'Toggle theme',
-            onPressed: widget.onToggleTheme,
-            icon: const Icon(Icons.brightness_6_outlined),
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      drawer: NavigationDrawer(
-        selectedIndex: _drawerIndex,
-        onDestinationSelected: (index) {
-          setState(() => _drawerIndex = index);
-          Navigator.pop(context);
-          if (index == 0) {
-            _newChat();
-          } else if (index == 1) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const HistoryPage()),
+      appBar: AppBar(title: const Text('Model Picker')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: ValueListenableBuilder<Set<String>>(
+          valueListenable: selectedModels,
+          builder: (context, sel, _) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Select models to respond:',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: -6,
+                  children:
+                      kAvailableModels.map((m) {
+                        final active = sel.contains(m);
+                        return FilterChip(
+                          label: Text(_prettyModel(m)),
+                          selected: active,
+                          onSelected: (v) {
+                            final s = {...sel};
+                            if (v)
+                              s.add(m);
+                            else
+                              s.remove(m);
+                            if (s.isEmpty) s.add(m);
+                            selectedModels.value = s;
+                          },
+                        );
+                      }).toList(),
+                ),
+                const Spacer(),
+                FilledButton.icon(
+                  icon: const Icon(Icons.check),
+                  label: const Text('Done'),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
             );
-          } else if (index == 2) {
-            _signOut();
-          }
-        },
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(28, 16, 16, 6),
-            child: Text(
-              'Navigate',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          const NavigationDrawerDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
-            label: Text('New Chat'),
-          ),
-          const NavigationDrawerDestination(
-            icon: Icon(Icons.history),
-            selectedIcon: Icon(Icons.history_toggle_off),
-            label: Text('History'),
-          ),
-          const NavigationDrawerDestination(
-            icon: Icon(Icons.logout),
-            selectedIcon: Icon(Icons.logout),
-            label: Text('Sign out'),
-          ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(28, 16, 16, 6),
-            child: Text(
-              'Models',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: SegmentedButton<String>(
-              segments: models
-                  .map((m) => ButtonSegment<String>(
-                value: m,
-                label: Text(_prettyModel(m)),
-              ))
-                  .toList(),
-              selected: _selectedModels,
-              multiSelectionEnabled: true,
-              showSelectedIcon: false,
-              onSelectionChanged: (set) {
-                setState(() => _selectedModels..clear()..addAll(set));
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
+          },
+        ),
       ),
-      body: Column(
+    );
+  }
+}
+
+class SettingsPage extends StatelessWidget {
+  final VoidCallback onToggleTheme;
+  const SettingsPage({super.key, required this.onToggleTheme});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = supabase.auth.currentUser;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
         children: [
-          if (_isLoading) const LinearProgressIndicator(),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                return ChatBubble(message: _messages[index]);
-              },
+          if (user != null)
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: Text(user.email ?? 'Signed in'),
+              subtitle: Text(user.id),
+            )
+          else
+            const ListTile(
+              leading: Icon(Icons.person_off_outlined),
+              title: Text('Not signed in'),
             ),
+          SwitchListTile(
+            secondary: const Icon(Icons.brightness_6_outlined),
+            title: const Text('Toggle light/dark'),
+            value: Theme.of(context).brightness == Brightness.dark,
+            onChanged: (_) => onToggleTheme(),
           ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      minLines: 1,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: _sendMessages,
-                      decoration: const InputDecoration(
-                        hintText: 'Type your message…',
-                        prefixIcon: Icon(Icons.message_outlined),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: () => _sendMessages(_controller.text),
-                    icon: const Icon(Icons.send),
-                    label: const Text('Send'),
-                  ),
-                ],
-              ),
-            ),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Sign out'),
+            onTap: () async {
+              await supabase.auth.signOut();
+              if (context.mounted) {
+                Navigator.of(
+                  context,
+                ).pushNamedAndRemoveUntil('/', (_) => false);
+              }
+            },
           ),
         ],
       ),
     );
-  }
-
-  String _prettyModel(String id) {
-    if (id.contains('deepseek')) return 'DeepSeek R1';
-    if (id.contains('gemma')) return 'Gemma 3n e4b';
-    if (id.contains('gpt-oss')) return 'GPT-OSS 20B';
-    return id;
   }
 }
 
@@ -745,7 +1086,6 @@ class Message {
   final String content;
   final String role;
   const Message({required this.content, required this.role});
-
   Map<String, dynamic> toJson() => {'content': content, 'role': role};
 }
 
@@ -783,4 +1123,11 @@ class ChatBubble extends StatelessWidget {
       ),
     );
   }
+}
+
+String _prettyModel(String id) {
+  if (id.contains('deepseek')) return 'DeepSeek R1';
+  if (id.contains('gemma')) return 'Gemma 3n e4b';
+  if (id.contains('gpt-oss')) return 'GPT-OSS 20B';
+  return id;
 }
