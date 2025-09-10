@@ -111,3 +111,16 @@ Maps/Places — deferred. Requires Maps key + platform setup and location permis
 - Add Maps & Places (current location + reverse geocode) with google_maps_flutter and geolocator.
 - Message streaming UI and per-message feedback.
 - Basic analytics and crash reporting.
+
+## 8. Individuals Work
+
+Alexandre:
+
+- Integrate Supabase (authentication + database)
+- Integrate persistent Chat History after each query
+
+Dickson:
+
+- Integrate Openrouter (AI Aggregator)
+- Update UI
+- Integrate Supabase Login system
